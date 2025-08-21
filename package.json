@@ -25,7 +25,12 @@
   },
   "manifest": {
     "host_permissions": [
-      "https://*/*"
+      "https://aistudio.google.com/*"
+    ],
+    "permissions": [
+      "storage",
+      "activeTab",
+      "tabs"
     ]
   }
 }
