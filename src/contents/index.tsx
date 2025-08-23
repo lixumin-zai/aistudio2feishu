@@ -12,64 +12,24 @@ interface ConversationTurn {
 }
 
 interface ConversationData {
-  turns: ConversationTurn[]
+  turns: ConversationTurn[],
+  title: string,
   timestamp: number
 }
 
-// 等待元素出现的工具函数
-function waitForElement(selector: string, timeout = 10000): Promise<Element | null> {
-  return new Promise((resolve) => {
-    const element = document.querySelector(selector)
-    if (element) {
-      resolve(element)
-      return
-    }
-
-    const observer = new MutationObserver(() => {
-      const element = document.querySelector(selector)
-      if (element) {
-        observer.disconnect()
-        resolve(element)
-      }
-    })
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    })
-
-    // 超时处理
-    setTimeout(() => {
-      observer.disconnect()
-      resolve(null)
-    }, timeout)
-  })
-}
-
-// 自动点击Edit按钮
-async function clickEditButtons(): Promise<void> {
-  try {
-    const editButtons = document.querySelectorAll('button[aria-label="Edit"]')
-    console.log(`Found ${editButtons.length} edit buttons`)
-    
-    for (const button of editButtons) {
-      if (button instanceof HTMLElement) {
-        button.click()
-        console.log('Clicked edit button')
-        // 等待一下让页面响应
-        await new Promise(resolve => setTimeout(resolve, 500))
-      }
-    }
-  } catch (error) {
-    console.error('Error clicking edit buttons:', error)
-  }
-}
 
 // 提取对话内容
-function extractConversationData(): ConversationData {
+async function extractConversationData(): Promise<ConversationData> {
   const turns: ConversationTurn[] = []
+  let title = 'AI Studio Conversation'
   
   try {
+    // 获取页面标题
+    const titleElement = document.querySelector('h1.actions.pointer.v3-font-headline-2')
+    if (titleElement) {
+      title = titleElement.textContent?.trim() || title
+    }
+    
     // 查找所有的对话容器
     const promptContainers = document.querySelectorAll('ms-chat-turn')
     console.log(`Found ${promptContainers.length} prompt containers`)
@@ -91,43 +51,22 @@ function extractConversationData(): ConversationData {
         
         if (content.trim()) {
           turns.push({
-            role: role as 'user' | 'model',
+            role: role.toLowerCase() === 'user' ? 'user' : 'model',
             content: content.trim()
           })
-          console.log(`Extracted ${role} message:`, content.substring(0, 100) + '...')
         }
       } catch (error) {
         console.error(`Error processing container ${index}:`, error)
       }
     })
+
   } catch (error) {
     console.error('Error extracting conversation data:', error)
   }
-  
   return {
     turns,
+    title,
     timestamp: Date.now()
-  }
-}
-
-// 将数据发送到popup
-function sendDataToPopup(data: ConversationData): void {
-  try {
-    // 使用Chrome storage API存储数据
-    chrome.storage.local.set({ conversationData: data }, () => {
-      console.log('Conversation data saved to storage')
-      
-      // 发送消息通知popup更新
-      chrome.runtime.sendMessage({
-        type: 'CONVERSATION_UPDATED',
-        data: data
-      }).catch(error => {
-        // 忽略错误，popup可能没有打开
-        console.log('Popup not available:', error.message)
-      })
-    })
-  } catch (error) {
-    console.error('Error sending data to popup:', error)
   }
 }
 
@@ -137,20 +76,38 @@ async function performExtraction(): Promise<ConversationData> {
   
   try {
     // 1. 自动点击Edit按钮
-    await clickEditButtons()
+    const editButtons = document.querySelectorAll('button[aria-label="Edit"]')
+    console.log(`Found ${editButtons.length} edit buttons`)
+    
+    for (const button of editButtons) {
+      if (button instanceof HTMLElement) {
+        button.click()
+        console.log('Clicked edit button')
+        // 等待一下让页面响应
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
     
     // 2. 等待一段时间让编辑模式生效
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise(resolve => setTimeout(resolve, 500))
     
     // 3. 提取对话数据
-    const conversationData = extractConversationData()
-    
-    console.log(`Extracted ${conversationData.turns.length} conversation turns`)
+    const conversationData = await extractConversationData()
+
+    await new Promise(resolve => setTimeout(resolve, 500))
+    for (const button of editButtons) {
+      if (button instanceof HTMLElement) {
+        button.click()
+        console.log('Clicked edit button')
+        // 等待一下让页面响应
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
     return conversationData
     
   } catch (error) {
     console.error('Error in extraction:', error)
-    return { turns: [], timestamp: Date.now() }
+    return { turns: [], title: 'AI Studio Conversation', timestamp: Date.now() }
   }
 }
 
@@ -158,19 +115,26 @@ async function performExtraction(): Promise<ConversationData> {
 console.log('AI Studio content script loaded and ready')
 
 // 监听来自popup的消息
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_CONVERSATION_DATA') {
-    const data = extractConversationData()
-    sendResponse(data)
-  } else if (message.type === 'EXTRACT_DATA') {
-    try {
-      const data = await performExtraction()
+    console.log('AI Studio content script received GET_CONVERSATION_DATA message')
+    extractConversationData().then(data => {
       sendResponse(data)
-    } catch (error) {
-      sendResponse({ turns: [], timestamp: Date.now(), error: (error as Error).message })
-    }
+    }).catch(error => {
+      sendResponse({ turns: [], timestamp: Date.now(), error: error.message })
+    })
+    return true // 保持消息通道开放
+  } else if (message.type === 'EXTRACT_DATA') {
+    console.log('AI Studio content script received EXTRACT_DATA message')
+    performExtraction().then(data => {
+      console.log("提取到的数据:", data)
+      sendResponse(data)
+    }).catch(error => {
+      console.error('提取失败:', error)
+      sendResponse({ turns: [], timestamp: Date.now(), error: error.message })
+    })
+    return true // 保持消息通道开放
   }
   
-  // 返回true表示异步响应
-  return true
+  return false // 对于其他消息类型，不保持通道开放
 })

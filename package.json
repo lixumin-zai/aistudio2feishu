@@ -25,7 +25,8 @@
   },
   "manifest": {
     "host_permissions": [
-      "https://aistudio.google.com/*"
+      "https://aistudio.google.com/*",
+      "https://open.feishu.cn/*"
     ],
     "permissions": [
       "storage",

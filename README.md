@@ -6,7 +6,7 @@ create by plasmo
 
 ## Description
 
-This plugin can generate example sentences from one or multiple words, helping users learn through these example sentences.
+Extension for uploading Google AI Studio data to Feishu Docs
 
 ## Usage
 ```shell
