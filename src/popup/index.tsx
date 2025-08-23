@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 
 // 引入飞书SDK
-import { GetTenantAccessToken, UploadFeishu } from '../api/feishuSDK'
+import { GetTenantAccessToken, UploadFeishu} from '../api/feishuSDK'
 
 const uploadFeishu = new UploadFeishu()
 
@@ -67,64 +67,48 @@ function IndexPopup() {
             console.log('成功获取飞书访问令牌')
             const obj_token = await uploadFeishu.createDocx(accessToken, objToken, response.title)
             if (obj_token) {
+              // 先处理所有异步操作
+              const childrenPromises = response.turns.map(async (item) => {
+                const docx_block = await uploadFeishu.markdown2docx(accessToken, item.content)
+                if (item.role === 'user') {
+                  return [
+                    {
+                      "block_type": 19,
+                      "callout": {
+                        "background_color": 14,
+                        "border_color": 5,
+                        "text_color": 5,
+                        "emoji_id": 1
+                      }
+                    },
+                    ...docx_block
+                  ]
+                } else {
+                  // model角色使用不同颜色
+                  return [
+                    {
+                      "block_type": 19,
+                      "callout": {
+                        "background_color": 10,
+                        "border_color": 3,
+                        "text_color": 3,
+                        "emoji_id": 5
+                      }
+                    },
+                    ...docx_block
+                  ]
+                }
+              })
+              
+              // 等待所有异步操作完成
+              const childrenArrays = await Promise.all(childrenPromises)
+              console.log("=====")
+              console.log(childrenArrays)
               const data = {
                 "index": 0,
-                "children": response.turns.flatMap((item) => {
-                  if (item.role === 'user') {
-                    return [
-                      {
-                        "block_type": 19,
-                        "callout": {
-                          "background_color": 14,
-                          "border_color": 5,
-                          "text_color": 5,
-                          "emoji_id": 1
-                        }
-                      },
-                      {
-                        "block_type": 2,
-                        "text": {
-                          "elements": [
-                            {
-                              "text_run": {
-                                "content": item.content
-                              }
-                            }
-                          ],
-                          "style": {}
-                        }
-                      }
-                    ]
-                  } else {
-                    // model角色使用不同颜色
-                    return [
-                      {
-                        "block_type": 19,
-                        "callout": {
-                          "background_color": 10,
-                          "border_color": 3,
-                          "text_color": 3,
-                          "emoji_id": 2
-                        }
-                      },
-                      {
-                        "block_type": 2,
-                        "text": {
-                          "elements": [
-                            {
-                              "text_run": {
-                                "content": item.content
-                              }
-                            }
-                          ],
-                          "style": {}
-                        }
-                      }
-                    ]
-                  }
-                })
+                "children": childrenArrays.flat()
               }
-              const accessToken = await getTenantAccessToken.call()
+              console.log(data)
               const isSuccess = await uploadFeishu.writeDocx(accessToken, obj_token, obj_token, data)
               if (isSuccess) {
                 setError("上传成功")
