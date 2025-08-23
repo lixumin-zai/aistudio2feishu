@@ -147,7 +147,7 @@ function IndexPopup() {
 
   return (
     <div style={{ width: 400, maxHeight: 600, padding: 24, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', backgroundColor: '#ffffff' }}>
-      <h2 style={{ margin: 0, fontSize: 20, color: '#202124', marginBottom: 24, fontWeight: 600 }}>AI Studio 对话提取</h2>
+      <h2 style={{ margin: 0, fontSize: 20, color: '#202124', marginBottom: 24, fontWeight: 600 }}>aistudio2feishu</h2>
       
       <div style={{ marginBottom: 24 }}>
         <div style={{ marginBottom: 20 }}>
