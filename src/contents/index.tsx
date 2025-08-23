@@ -84,23 +84,23 @@ async function performExtraction(): Promise<ConversationData> {
         button.click()
         console.log('Clicked edit button')
         // 等待一下让页面响应
-        await new Promise(resolve => setTimeout(resolve, 200))
+        // await new Promise(resolve => setTimeout(resolve, 500))
       }
     }
     
     // 2. 等待一段时间让编辑模式生效
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await new Promise(resolve => setTimeout(resolve, 1000))
     
     // 3. 提取对话数据
     const conversationData = await extractConversationData()
 
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await new Promise(resolve => setTimeout(resolve, 1000))
     for (const button of editButtons) {
       if (button instanceof HTMLElement) {
         button.click()
         console.log('Clicked edit button')
         // 等待一下让页面响应
-        await new Promise(resolve => setTimeout(resolve, 200))
+        // await new Promise(resolve => setTimeout(resolve, 500))
       }
     }
     return conversationData

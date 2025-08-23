@@ -123,18 +123,23 @@ class UploadFeishu {
       const result = await response.json();
       const code = result.code ?? -1;
       if (code === 0) {
-        const first_level_block_ids = result.data.first_level_block_ids
-        const blocks = []
-        result.data.blocks.forEach((item: any) => {
-          item.index = first_level_block_ids.indexOf(item.block_id)
-          if (item.children) {
-            item.children.forEach((child: any) => {
-              child.index = first_level_block_ids.indexOf(child.block_id)
-            })
-          }
-          blocks.push(item)
-        })
-        return blocks;
+        const first_level_block_ids = result.data.first_level_block_ids;
+        const blocks = result.data.blocks || [];
+        
+        // 根据first_level_block_ids的顺序对blocks进行排序
+        const sortedBlocks = blocks.sort((a: any, b: any) => {
+          const indexA = first_level_block_ids.indexOf(a.block_id);
+          const indexB = first_level_block_ids.indexOf(b.block_id);
+          
+          // 如果block_id不在first_level_block_ids中，放到最后
+          if (indexA === -1 && indexB === -1) return 0;
+          if (indexA === -1) return 1;
+          if (indexB === -1) return -1;
+          
+          return indexA - indexB;
+        });
+        
+        return sortedBlocks;
       }
     } catch (error) {
       return []
@@ -146,4 +151,4 @@ class UploadFeishu {
 
 export { GetTenantAccessToken, UploadFeishu};
 
-// https://vsxa1w87lf.feishu.cn/wiki/FKQUwhXZbiSEFokmwKnctHmvneb
+// https://vsxa1w87lf.feishu.cn/wiki/FKQUwhXZbiSEFokmwKnctHmvnebfeishu.cn/wiki/FKQUwhXZbiSEFokmwKnctHmvneb
