@@ -37,11 +37,13 @@ class UploadFeishu {
   private create_url: string;
   private write_url: string;
   private markdown2docx_url: string;
+  private block_url: string;
 
   constructor() {
     this.create_url = "https://open.feishu.cn/open-apis/wiki/v2/spaces/:space_id/nodes";
     this.write_url = "https://open.feishu.cn/open-apis/docx/v1/documents/:document_id/blocks/:block_id/children?document_revision_id=-1";
     this.markdown2docx_url = "https://open.feishu.cn/open-apis/docx/v1/documents/blocks/convert"
+    this.block_url = "https://open.feishu.cn/open-apis/docx/v1/documents/:document_id/blocks/:block_id/descendant"
   }
   async createDocx(tenantAccessToken: string, folder_token: string, title: string): Promise<string> {
     const headers = {
@@ -105,7 +107,7 @@ class UploadFeishu {
 
   }
 
-  async markdown2docx(tenantAccessToken: string, content: string): Promise<object[]> {
+  async markdown2docx(tenantAccessToken: string, content: string): Promise<[object[], string[]]> {
     const headers = {
       "Content-Type": "application/json",
       "Authorization": "Bearer " + tenantAccessToken,
@@ -123,30 +125,39 @@ class UploadFeishu {
       const result = await response.json();
       const code = result.code ?? -1;
       if (code === 0) {
-        const first_level_block_ids = result.data.first_level_block_ids;
-        const blocks = result.data.blocks || [];
-        
-        // 根据first_level_block_ids的顺序对blocks进行排序
-        const sortedBlocks = blocks.sort((a: any, b: any) => {
-          const indexA = first_level_block_ids.indexOf(a.block_id);
-          const indexB = first_level_block_ids.indexOf(b.block_id);
-          
-          // 如果block_id不在first_level_block_ids中，放到最后
-          if (indexA === -1 && indexB === -1) return 0;
-          if (indexA === -1) return 1;
-          if (indexB === -1) return -1;
-          
-          return indexA - indexB;
-        });
-        
-        return sortedBlocks;
-      }
+        console.log(result)
+        return [result.data.blocks || [], result.data.first_level_block_ids]
+      }  
     } catch (error) {
-      return []
+      return [[], []]
     }
-    return []
+    return [[], []]
   }
   
+  async blockUpload(tenantAccessToken: string, document_id: string, block_id: string, blocks: object): Promise<boolean> {
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + tenantAccessToken,
+    };
+    const url = this.block_url.replace(":document_id", document_id).replace(":block_id", block_id)
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(blocks),
+      });
+      const result = await response.json();
+      console.log(result)
+      const code = result.code ?? -1;
+      if (code === 0) {
+        console.log()
+        return true
+      }
+      return false
+    } catch (error) {
+      return false
+    }
+}
 }
 
 export { GetTenantAccessToken, UploadFeishu};

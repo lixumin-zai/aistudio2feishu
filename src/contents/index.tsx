@@ -94,7 +94,7 @@ async function performExtraction(): Promise<ConversationData> {
     // 3. 提取对话数据
     const conversationData = await extractConversationData()
 
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise(resolve => setTimeout(resolve, 2000))
     for (const button of editButtons) {
       if (button instanceof HTMLElement) {
         button.click()

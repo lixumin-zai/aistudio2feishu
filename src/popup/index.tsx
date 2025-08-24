@@ -68,48 +68,22 @@ function IndexPopup() {
             const obj_token = await uploadFeishu.createDocx(accessToken, objToken, response.title)
             if (obj_token) {
               // 先处理所有异步操作
-              const childrenPromises = response.turns.map(async (item) => {
-                const docx_block = await uploadFeishu.markdown2docx(accessToken, item.content)
+              let markdown_text = ""
+              const childrenPromises = response.turns.map((item) => {
                 if (item.role === 'user') {
-                  return [
-                    {
-                      "block_type": 19,
-                      "callout": {
-                        "background_color": 14,
-                        "border_color": 5,
-                        "text_color": 5,
-                        "emoji_id": 1
-                      }
-                    },
-                    ...docx_block
-                  ]
+                  markdown_text += `---\n${item.content}\n---\n`
                 } else {
-                  // model角色使用不同颜色
-                  return [
-                    {
-                      "block_type": 19,
-                      "callout": {
-                        "background_color": 10,
-                        "border_color": 3,
-                        "text_color": 3,
-                        "emoji_id": 5
-                      }
-                    },
-                    ...docx_block
-                  ]
+                  markdown_text += `---\n${item.content}\n---\n`
                 }
               })
-              
-              // 等待所有异步操作完成
-              const childrenArrays = await Promise.all(childrenPromises)
-              console.log("=====")
-              console.log(childrenArrays)
+              const [docx_block, first_level_block_ids] = await uploadFeishu.markdown2docx(accessToken, markdown_text)
+
               const data = {
                 "index": 0,
-                "children": childrenArrays.flat()
+                "children_id": first_level_block_ids,
+                "descendants": docx_block
               }
-              console.log(data)
-              const isSuccess = await uploadFeishu.writeDocx(accessToken, obj_token, obj_token, data)
+              const isSuccess = await uploadFeishu.blockUpload(accessToken, obj_token, obj_token, data)
               if (isSuccess) {
                 setError("上传成功")
               } else {
