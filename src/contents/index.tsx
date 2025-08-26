@@ -89,12 +89,12 @@ async function performExtraction(): Promise<ConversationData> {
     }
     
     // 2. 等待一段时间让编辑模式生效
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise(resolve => setTimeout(resolve, 300))
     
     // 3. 提取对话数据
     const conversationData = await extractConversationData()
 
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    await new Promise(resolve => setTimeout(resolve, 1500))
     for (const button of editButtons) {
       if (button instanceof HTMLElement) {
         button.click()
