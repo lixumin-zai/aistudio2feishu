@@ -28,7 +28,7 @@ async function performExtraction(): Promise<ConversationData> {
     let title = ""
     const turns: ConversationTurn[] = []
 
-    const titleElement = document.querySelector('h1.actions.pointer.v3-font-headline-2')
+    const titleElement = document.querySelector('h1.actions.pointer')
     if (titleElement) {
       title = titleElement.textContent?.trim() || title
     }
