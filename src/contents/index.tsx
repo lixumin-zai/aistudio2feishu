@@ -1,4 +1,6 @@
 import type { PlasmoCSConfig } from "plasmo"
+// 引入飞书SDK
+import { GetTenantAccessToken, UploadFeishu } from '../api/feishuSDK'
 
 export const config: PlasmoCSConfig = {
   matches: ["https://aistudio.google.com/*"],
@@ -15,6 +17,90 @@ interface ConversationData {
   turns: ConversationTurn[],
   title: string,
   timestamp: number
+}
+
+// 飞书配置接口
+interface FeishuConfig {
+  appId: string
+  appSecret: string
+  objToken: string
+}
+
+// 获取飞书配置
+function getFeishuConfig(): FeishuConfig | null {
+  const appId = localStorage.getItem('feishu_app_id')
+  const appSecret = localStorage.getItem('feishu_app_secret')
+  const objToken = localStorage.getItem('feishu_obj_token')
+  
+  if (!appId || !appSecret || !objToken) {
+    return null
+  }
+  
+  return { appId, appSecret, objToken }
+}
+
+// 上传数据到飞书
+async function uploadToFeishu(data: ConversationData): Promise<boolean> {
+  const config = getFeishuConfig()
+  if (!config) {
+    showNotification('请先在插件弹窗中配置飞书信息', 'warning')
+    return false
+  }
+
+  try {
+    showNotification('正在上传到飞书...', 'warning')
+    
+    const uploadFeishu = new UploadFeishu()
+    const getTenantAccessToken = new GetTenantAccessToken(config.appId, config.appSecret)
+    
+    // 获取访问令牌
+    const accessToken = await getTenantAccessToken.call()
+    if (!accessToken) {
+      showNotification('获取飞书访问令牌失败，请检查App ID和App Secret', 'error')
+      return false
+    }
+
+    // 创建文档
+    const obj_token = await uploadFeishu.createDocx(accessToken, config.objToken, data.title)
+    if (!obj_token) {
+      showNotification('创建飞书文档失败', 'error')
+      return false
+    }
+
+    // 转换对话内容为markdown
+    let markdown_text = ""
+    data.turns.forEach((item) => {
+      if (item.role === 'user') {
+        markdown_text += `---\n${item.content}\n---\n`
+      } else {
+        markdown_text += `---\n${item.content}\n---\n`
+      }
+    })
+
+    // 转换为飞书文档格式
+    const [docx_block, first_level_block_ids] = await uploadFeishu.markdown2docx(accessToken, markdown_text)
+
+    const uploadData = {
+      "index": 0,
+      "children_id": first_level_block_ids,
+      "descendants": docx_block
+    }
+
+    // 上传内容
+    const isSuccess = await uploadFeishu.blockUpload(accessToken, obj_token, obj_token, uploadData)
+    
+    if (isSuccess) {
+      showNotification('上传到飞书成功！', 'success')
+      return true
+    } else {
+      showNotification('上传到飞书失败', 'error')
+      return false
+    }
+  } catch (error) {
+    console.error('上传到飞书失败:', error)
+    showNotification('上传到飞书失败: ' + (error.message || '未知错误'), 'error')
+    return false
+  }
 }
 
 
@@ -87,8 +173,170 @@ async function performExtraction(): Promise<ConversationData> {
   }
 }
 
+// 创建通知弹窗
+function showNotification(message: string, type: 'success' | 'error' | 'warning' = 'success') {
+  // 移除已存在的通知
+  const existingNotification = document.getElementById('aistudio-notification')
+  if (existingNotification) {
+    existingNotification.remove()
+  }
+
+  const notification = document.createElement('div')
+  notification.id = 'aistudio-notification'
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 10001;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+    max-width: 300px;
+    word-wrap: break-word;
+  `
+
+  // 根据类型设置不同的背景色
+  switch (type) {
+    case 'success':
+      notification.style.backgroundColor = '#10b981'
+      break
+    case 'error':
+      notification.style.backgroundColor = '#ef4444'
+      break
+    case 'warning':
+      notification.style.backgroundColor = '#f59e0b'
+      break
+  }
+
+  notification.textContent = message
+  document.body.appendChild(notification)
+
+  // 3秒后自动消失
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.style.opacity = '0'
+      notification.style.transform = 'translateX(100%)'
+      setTimeout(() => {
+        notification.remove()
+      }, 300)
+    }
+  }, 3000)
+}
+
+// 创建浮动按钮
+function createFloatingButton() {
+  // 移除已存在的按钮
+  const existingUploadButton = document.getElementById('aistudio-upload-button')
+
+  if (existingUploadButton) {
+    existingUploadButton.remove()
+  }
+
+  // 创建提取并上传按钮
+  const uploadButton = document.createElement('button')
+  uploadButton.id = 'aistudio-upload-button'
+  uploadButton.textContent = '提取并上传'
+  uploadButton.style.cssText = `
+    position: fixed;
+    top: 130px;
+    right: 20px;
+    width: 100px;
+    height: 40px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 10000;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `
+
+
+  // 上传按钮悬停效果
+  uploadButton.addEventListener('mouseenter', () => {
+    uploadButton.style.transform = 'translateY(-2px)'
+    uploadButton.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.6)'
+  })
+
+  uploadButton.addEventListener('mouseleave', () => {
+    uploadButton.style.transform = 'translateY(0)'
+    uploadButton.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.4)'
+  })
+
+  // 上传按钮点击事件
+  uploadButton.addEventListener('click', async () => {
+    uploadButton.disabled = true
+    uploadButton.textContent = '提取中...'
+    uploadButton.style.opacity = '0.7'
+
+    try {
+      const data = await performExtraction()
+      if (data.turns && data.turns.length > 0) {
+        showNotification(`成功提取 ${data.turns.length} 条对话`, 'success')
+        
+        // 检查是否配置了飞书信息
+        const config = getFeishuConfig()
+        if (config) {
+          uploadButton.textContent = '上传中...'
+          const uploadSuccess = await uploadToFeishu(data)
+          if (uploadSuccess) {
+            uploadButton.textContent = '上传成功'
+            setTimeout(() => {
+              uploadButton.textContent = '提取并上传'
+            }, 2000)
+          }
+        } else {
+          showNotification('请先在插件弹窗中配置飞书信息', 'warning')
+        }
+      } else {
+        showNotification('未找到对话内容', 'warning')
+      }
+    } catch (error) {
+      console.error('提取失败:', error)
+      showNotification('提取失败: ' + (error.message || '未知错误'), 'error')
+    } finally {
+      uploadButton.disabled = false
+      if (uploadButton.textContent !== '上传成功') {
+        uploadButton.textContent = '提取并上传'
+      }
+      uploadButton.style.opacity = '1'
+    }
+  })
+
+  document.body.appendChild(uploadButton)
+}
+
 // Content script加载完成
 console.log('AI Studio content script loaded and ready')
+
+// 页面加载完成后创建按钮
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', createFloatingButton)
+} else {
+  createFloatingButton()
+}
+
+// 监听页面变化，确保按钮始终存在
+const observer = new MutationObserver(() => {
+  if (!document.getElementById('aistudio-upload-button')) {
+    createFloatingButton()
+  }
+})
+
+observer.observe(document.body, {
+  childList: true,
+  subtree: true
+})
 
 // 监听来自popup的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
