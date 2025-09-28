@@ -21,6 +21,7 @@ class GetTenantAccessToken {
       });
       
       const result = await response.json();
+      console.log(result)
       const code = result.code ?? -1;
       
       if (code === 0) {

@@ -9,31 +9,59 @@ function IndexPopup() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
-  const [appId, setAppId] = useState(() => {
-    return localStorage.getItem('feishu_app_id') || 'cli_******'
-  })
-  const [appSecret, setAppSecret] = useState(() => {
-    return localStorage.getItem('feishu_app_secret') || '******'
-  })
-  const [objToken, setObjToken] = useState(() => {
-    return localStorage.getItem('feishu_obj_token') || '******'
-  }) 
+  // 使用 chrome.storage.local 持久化配置（替代 localStorage）
+  const [appId, setAppId] = useState<string>("")
+  const [appSecret, setAppSecret] = useState<string>("")
+  const [objToken, setObjToken] = useState<string>("")
 
-  // 保存配置到localStorage
+  // 保存配置到 chrome.storage.local
   const saveAppId = (value: string) => {
     setAppId(value)
-    localStorage.setItem('feishu_app_id', value)
+    chrome.storage.local.set({ feishu_app_id: value })
   }
 
   const saveAppSecret = (value: string) => {
     setAppSecret(value)
-    localStorage.setItem('feishu_app_secret', value)
+    chrome.storage.local.set({ feishu_app_secret: value })
   }
 
   const saveObjToken = (value: string) => {
     setObjToken(value)
-    localStorage.setItem('feishu_obj_token', value)
+    chrome.storage.local.set({ feishu_obj_token: value })
   }
+
+  // 初始化时从 chrome.storage.local 读取配置（并兼容迁移旧的 localStorage）
+  useEffect(() => {
+    chrome.storage.local
+      .get(["feishu_app_id", "feishu_app_secret", "feishu_obj_token"]) 
+      .then(async (res) => {
+        const hasNewStore = !!(res.feishu_app_id || res.feishu_app_secret || res.feishu_obj_token)
+        if (hasNewStore) {
+          setAppId(res.feishu_app_id || "")
+          setAppSecret(res.feishu_app_secret || "")
+          setObjToken(res.feishu_obj_token || "")
+          return
+        }
+        // 迁移旧的 localStorage 配置（如果存在）
+        const legacyAppId = localStorage.getItem('feishu_app_id') || ""
+        const legacyAppSecret = localStorage.getItem('feishu_app_secret') || ""
+        const legacyObjToken = localStorage.getItem('feishu_obj_token') || ""
+        if (legacyAppId || legacyAppSecret || legacyObjToken) {
+          setAppId(legacyAppId)
+          setAppSecret(legacyAppSecret)
+          setObjToken(legacyObjToken)
+          await chrome.storage.local.set({
+            feishu_app_id: legacyAppId,
+            feishu_app_secret: legacyAppSecret,
+            feishu_obj_token: legacyObjToken
+          })
+          // 可选：清理旧值，避免混淆
+          localStorage.removeItem('feishu_app_id')
+          localStorage.removeItem('feishu_app_secret')
+          localStorage.removeItem('feishu_obj_token')
+        }
+      })
+  }, [])
 
   // 手动提取数据
   const extractData = async () => {
@@ -154,6 +182,7 @@ function IndexPopup() {
              }}
           />
         </div>
+
         <div style={{ marginBottom: 20 }}>
           <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#5f6368', fontWeight: 500 }}>App Secret</label>
           <input
@@ -183,91 +212,68 @@ function IndexPopup() {
                ;(e.target as HTMLInputElement).style.boxShadow = 'none'
              }}
           />
-          
-
         </div>
-        <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#5f6368', fontWeight: 500 }}>文档Token</label>
-            <input
-              type="text"
-              value={objToken}
-              onChange={(e) => saveObjToken(e.target.value)}
-              placeholder="请输入飞书文档的Token"
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid #e1e5e9',
-                borderRadius: 8,
-                fontSize: 14,
-                boxSizing: 'border-box',
-                backgroundColor: '#fafbfc',
-                transition: 'all 0.2s ease',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                (e.target as HTMLInputElement).style.borderColor = '#4285f4'
-                ;(e.target as HTMLInputElement).style.backgroundColor = '#ffffff'
-                ;(e.target as HTMLInputElement).style.boxShadow = '0 0 0 3px rgba(66, 133, 244, 0.1)'
-              }}
-              onBlur={(e) => {
-                (e.target as HTMLInputElement).style.borderColor = '#e1e5e9'
-                ;(e.target as HTMLInputElement).style.backgroundColor = '#fafbfc'
-                ;(e.target as HTMLInputElement).style.boxShadow = 'none'
-              }}
-            />
-          </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: '#5f6368', fontWeight: 500 }}>Obj Token（目标目录）</label>
+          <input
+            type="text"
+            value={objToken}
+            onChange={(e) => saveObjToken(e.target.value)}
+            placeholder="请输入飞书文档目标目录token"
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              border: '1px solid #e1e5e9',
+              borderRadius: 8,
+              fontSize: 14,
+              boxSizing: 'border-box',
+              backgroundColor: '#fafbfc',
+              transition: 'all 0.2s ease',
+              outline: 'none'
+            }}
+            onFocus={(e) => {
+               (e.target as HTMLInputElement).style.borderColor = '#4285f4'
+               ;(e.target as HTMLInputElement).style.backgroundColor = '#ffffff'
+               ;(e.target as HTMLInputElement).style.boxShadow = '0 0 0 3px rgba(66, 133, 244, 0.1)'
+             }}
+             onBlur={(e) => {
+               (e.target as HTMLInputElement).style.borderColor = '#e1e5e9'
+               ;(e.target as HTMLInputElement).style.backgroundColor = '#fafbfc'
+               ;(e.target as HTMLInputElement).style.boxShadow = 'none'
+             }}
+          />
+        </div>
       </div>
-      
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
-        <button 
+
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button
           onClick={extractData}
-          disabled={extracting}
           style={{
-            padding: '12px 24px',
-            backgroundColor: extracting ? '#f1f3f4' : '#4285f4',
-            color: extracting ? '#5f6368' : 'white',
+            flex: 1,
+            backgroundColor: '#4285f4',
+            color: 'white',
             border: 'none',
             borderRadius: 8,
-            cursor: extracting ? 'not-allowed' : 'pointer',
+            padding: '12px 16px',
             fontSize: 14,
-            fontWeight: 500,
-            transition: 'all 0.2s ease',
-            boxShadow: extracting ? 'none' : '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
-            minWidth: 120
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
           }}
-          onMouseEnter={(e) => {
-              if (!extracting) {
-                ;(e.target as HTMLButtonElement).style.backgroundColor = '#3367d6'
-                ;(e.target as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.12)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!extracting) {
-                ;(e.target as HTMLButtonElement).style.backgroundColor = '#4285f4'
-                ;(e.target as HTMLButtonElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)'
-              }
-            }}
+          disabled={extracting}
         >
-          {extracting ? '提取中...' : '提取对话'}
+          {extracting ? '提取中...' : '提取并上传'}
         </button>
       </div>
 
-      {loading && (
-        <div style={{ textAlign: 'center', padding: 20, color: '#666' }}>
-          加载中...
-        </div>
-      )}
-
       {error && (
-        <div style={{ 
-          padding: 16, 
-          backgroundColor: '#fef7f0', 
-          border: '1px solid #fce8e6', 
-          borderRadius: 8, 
-          color: '#d93025',
-          marginBottom: 20,
-          fontSize: 14,
-          lineHeight: 1.4
+        <div style={{
+          marginTop: 16,
+          padding: '10px 12px',
+          borderRadius: 8,
+          backgroundColor: error.includes('成功') ? '#e6f4ea' : '#fce8e6',
+          color: error.includes('成功') ? '#137333' : '#c5221f'
         }}>
           {error}
         </div>

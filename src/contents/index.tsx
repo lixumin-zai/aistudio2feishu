@@ -26,79 +26,79 @@ interface FeishuConfig {
   objToken: string
 }
 
-// 获取飞书配置
-function getFeishuConfig(): FeishuConfig | null {
-  const appId = localStorage.getItem('feishu_app_id')
-  const appSecret = localStorage.getItem('feishu_app_secret')
-  const objToken = localStorage.getItem('feishu_obj_token')
-  
-  if (!appId || !appSecret || !objToken) {
-    return null
+// 增加配置缓存，避免每次点击都重新读取存储
+let cachedFeishuConfig: FeishuConfig | null = null
+
+// 初始化配置监听：当 popup 保存时，contents 侧自动更新缓存
+async function initFeishuConfigWatcher() {
+  try {
+    cachedFeishuConfig = await getFeishuConfig()
+    console.log('[aistudio2feishu] 初始化配置缓存: ', { appId: cachedFeishuConfig?.appId, objToken: cachedFeishuConfig?.objToken })
+  } catch (e) {
+    console.log('[aistudio2feishu] 初始化配置缓存失败:', e)
   }
-  
-  return { appId, appSecret, objToken }
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' || areaName === 'sync') {
+      const keys = ['feishu_app_id','feishu_app_secret','feishu_obj_token']
+      const hasAny = keys.some((k) => k in changes)
+      if (hasAny) {
+        getFeishuConfig().then((cfg) => {
+          cachedFeishuConfig = cfg
+          console.log('[aistudio2feishu] 存储变化，更新配置缓存: ', { appId: cfg?.appId, objToken: cfg?.objToken })
+        })
+      }
+    }
+  })
 }
 
-// 上传数据到飞书
-async function uploadToFeishu(data: ConversationData): Promise<boolean> {
-  const config = getFeishuConfig()
-  if (!config) {
-    showNotification('请先在插件弹窗中配置飞书信息', 'warning')
-    return false
+// 获取飞书配置
+// 使用 chrome.storage.local 读取飞书配置（带 sync 兜底），避免与页面 localStorage 混淆
+async function getFeishuConfig(): Promise<FeishuConfig | null> {
+  const keys = ['feishu_app_id', 'feishu_app_secret', 'feishu_obj_token'] as const
+  // 先读 local
+  const localRes = await new Promise<Record<string, string>>((resolve) => {
+    chrome.storage.local.get(keys, (res) => resolve(res as Record<string, string>))
+  })
+  const appIdLocal = localRes.feishu_app_id
+  const appSecretLocal = localRes.feishu_app_secret
+  const objTokenLocal = localRes.feishu_obj_token
+
+  if (appIdLocal && appSecretLocal && objTokenLocal) {
+    return { appId: appIdLocal, appSecret: appSecretLocal, objToken: objTokenLocal }
   }
 
+  // 兜底读 sync
+  const syncRes = await new Promise<Record<string, string>>((resolve) => {
+    chrome.storage.sync.get(keys, (res) => resolve(res as Record<string, string>))
+  })
+  const appIdSync = syncRes.feishu_app_id
+  const appSecretSync = syncRes.feishu_app_secret
+  const objTokenSync = syncRes.feishu_obj_token
+
+  if (appIdSync && appSecretSync && objTokenSync) {
+    return { appId: appIdSync, appSecret: appSecretSync, objToken: objTokenSync }
+  }
+
+  return null
+}
+
+// 上传数据到飞书（改为走背景脚本，避免 CORS）
+async function uploadToFeishu(data: ConversationData): Promise<boolean> {
   try {
-    showNotification('正在上传到飞书...', 'warning')
-    
-    const uploadFeishu = new UploadFeishu()
-    const getTenantAccessToken = new GetTenantAccessToken(config.appId, config.appSecret)
-    
-    // 获取访问令牌
-    const accessToken = await getTenantAccessToken.call()
-    if (!accessToken) {
-      showNotification('获取飞书访问令牌失败，请检查App ID和App Secret', 'error')
-      return false
-    }
-
-    // 创建文档
-    const obj_token = await uploadFeishu.createDocx(accessToken, config.objToken, data.title)
-    if (!obj_token) {
-      showNotification('创建飞书文档失败', 'error')
-      return false
-    }
-
-    // 转换对话内容为markdown
-    let markdown_text = ""
-    data.turns.forEach((item) => {
-      if (item.role === 'user') {
-        markdown_text += `---\n${item.content}\n---\n`
-      } else {
-        markdown_text += `---\n${item.content}\n---\n`
-      }
+    const res = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      chrome.runtime.sendMessage({ type: 'UPLOAD_TO_FEISHU', data }, (response) => {
+        resolve(response || { ok: false, error: 'No response' })
+      })
     })
-
-    // 转换为飞书文档格式
-    const [docx_block, first_level_block_ids] = await uploadFeishu.markdown2docx(accessToken, markdown_text)
-
-    const uploadData = {
-      "index": 0,
-      "children_id": first_level_block_ids,
-      "descendants": docx_block
-    }
-
-    // 上传内容
-    const isSuccess = await uploadFeishu.blockUpload(accessToken, obj_token, obj_token, uploadData)
-    
-    if (isSuccess) {
+    if (res.ok) {
       showNotification('上传到飞书成功！', 'success')
       return true
     } else {
-      showNotification('上传到飞书失败', 'error')
+      showNotification('上传到飞书失败: ' + (res.error || '未知错误'), 'error')
       return false
     }
-  } catch (error) {
-    console.error('上传到飞书失败:', error)
-    showNotification('上传到飞书失败: ' + (error.message || '未知错误'), 'error')
+  } catch (error: any) {
+    showNotification('上传到飞书失败: ' + (error?.message || '未知错误'), 'error')
     return false
   }
 }
@@ -284,9 +284,11 @@ function createFloatingButton() {
       if (data.turns && data.turns.length > 0) {
         showNotification(`成功提取 ${data.turns.length} 条对话`, 'success')
         
-        // 检查是否配置了飞书信息
-        const config = getFeishuConfig()
+        // 检查是否配置了飞书信息（优先使用缓存）
+        const config = cachedFeishuConfig || await getFeishuConfig()
+        console.log('[aistudio2feishu] 获取到配置: ', { appId: config?.appId, appSecret: config?.appSecret, objToken: config?.objToken, chromeAvailable: !!(window as any).chrome?.storage })
         if (config) {
+          showNotification(`已读取配置: AppID=${config.appId}, ObjToken=${config.objToken}`, 'warning')
           uploadButton.textContent = '上传中...'
           const uploadSuccess = await uploadToFeishu(data)
           if (uploadSuccess) {
@@ -317,7 +319,8 @@ function createFloatingButton() {
 }
 
 // Content script加载完成
-console.log('AI Studio content script loaded and ready')
+console.log('AI Studio content script loaded and ready', { chromeAvailable: !!(window as any).chrome?.storage })
+initFeishuConfigWatcher()
 
 // 页面加载完成后创建按钮
 if (document.readyState === 'loading') {

@@ -32,6 +32,9 @@
       "storage",
       "activeTab",
       "tabs"
-    ]
+    ],
+    "background": {
+      "service_worker": "src/background.ts"
+    }
   }
 }
