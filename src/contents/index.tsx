@@ -51,6 +51,93 @@ async function initFeishuConfigWatcher() {
   })
 }
 
+
+const isTableLine = (line) => {
+    const trimmed = line.trim();
+    return trimmed.startsWith('|') && trimmed.endsWith('|');
+};
+
+const isTableSeparator = (line) => {
+    if (!isTableLine(line)) return false;
+    const content = line.trim().slice(1, -1).replace(/\|/g, '').trim();
+    return /^[ \-:]+$/.test(content) && content.includes('-');
+};
+
+function parseTableToJson(tableLines) {
+    if (tableLines.length < 2) return [];
+    const headers = tableLines[0].slice(1, -1).split('|').map(h => h.trim());
+    const dataRows = tableLines.slice(2);
+
+    return dataRows.map(row => {
+        const cells = row.slice(1, -1).split('|').map(c => c.trim());
+        const rowObject = {};
+        headers.forEach((header, index) => {
+            const cleanCell = cells[index] ? cells[index].replace(/\*\*(.*?)\*\*/g, '$1') : '';
+            rowObject[header] = cleanCell;
+        });
+        return rowObject;
+    });
+}
+
+function parseMarkdownDocument(markdownText) {
+    const lines = markdownText.split('\n');
+    const result = [];
+    let textBuffer = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const currentLine = lines[i];
+        const nextLine = lines[i + 1];
+
+        if (isTableLine(currentLine) && !isTableSeparator(currentLine) && nextLine && isTableSeparator(nextLine)) {
+            if (textBuffer.length > 0) {
+                result.push({ type: 'text', content: textBuffer.join('\n') });
+                textBuffer = [];
+            }
+
+            const tableLines = [currentLine.trim()];
+            i++; 
+            tableLines.push(lines[i].trim());
+            i++; 
+
+            while (i < lines.length && isTableLine(lines[i])) {
+                tableLines.push(lines[i].trim());
+                i++;
+            }
+            i--; 
+
+            result.push({ type: 'table', content: parseTableToJson(tableLines) });
+        } else {
+            textBuffer.push(currentLine);
+        }
+    }
+
+    if (textBuffer.length > 0) {
+        result.push({ type: 'text', content: textBuffer.join('\n') });
+    }
+
+    // 过滤掉可能产生的仅包含空字符串的文本块
+    return result.filter(block => (block.type === 'table') || (block.type === 'text' && block.content.trim() !== ''));
+}
+
+function convertTableToKeyValue(tableJson) {
+  if (!tableJson || tableJson.length === 0) return '';
+  
+  // 遍历每一行 (JSON对象)
+  return tableJson.map((row, index) => {
+    const recordHeader = `--- 记录 ${index + 1} ---`;
+    
+    // 将每个对象的键值对转换为 "Key: Value" 格式
+    const keyValuePairs = Object.entries(row)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n'); // 每对键值占一行
+      
+    return `${recordHeader}\n${keyValuePairs}`;
+  }).join('\n\n'); // 每个记录之间用一个空行隔开
+}
+
+
+
+
 // 获取飞书配置
 // 使用 chrome.storage.local 读取飞书配置（带 sync 兜底），避免与页面 localStorage 混淆
 async function getFeishuConfig(): Promise<FeishuConfig | null> {
@@ -145,7 +232,21 @@ async function performExtraction(): Promise<ConversationData> {
           // 6. 提取对话数据   
           const textareaElement = parentElement.querySelector('ms-autosize-textarea')
           let content = textareaElement?.getAttribute('data-value') || ''
-          console.log(content)
+          // 1. 将整个文档解析成结构化的数据块
+          const structuredDocument = parseMarkdownDocument(content);
+
+          // 2. 遍历数据块，将表格块转换为Key-Value格式，文本块保持不变
+          const transformedBlocks = structuredDocument.map(block => {
+            if (block.type === 'text') {
+              return block.content;
+            } else if (block.type === 'table') {
+              return convertTableToKeyValue(block.content);
+            }
+            return ''; // 安全起见，虽然不太可能发生
+          });
+
+          content = transformedBlocks.join('\n\n'); // 用两个换行符连接块，以保持段落间距
+          console.log("123", content)
           if (content.trim()) {
             turns.push({
               role: role.toLowerCase() === 'user' ? 'user' : 'model',
